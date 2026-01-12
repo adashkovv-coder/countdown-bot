@@ -6,32 +6,25 @@ import threading
 import os
 import logging
 from flask import Flask, jsonify
-import threading
-import requests
-import schedule
-import time
 
 # Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - [%(levelname)s] - %(message)s',
     handlers=[
-        logging.StreamHandler()  # Для Render важно использовать StreamHandler
+        logging.StreamHandler()
     ]
 )
 
 # --- КОНФИГУРАЦИЯ ИЗ ПЕРЕМЕННЫХ ОКРУЖЕНИЯ ---
-# Получаем токен бота
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
 if not BOT_TOKEN:
     logging.error("❌ BOT_TOKEN не установлен! Установи в настройках Render")
     exit(1)
 
-# Получаем ID пользователей
 YOUR_CHAT_ID = os.environ.get('YOUR_CHAT_ID')
 GIRLFRIEND_CHAT_ID = os.environ.get('GIRLFRIEND_CHAT_ID', '')
 
-# Список получателей
 TARGET_CHAT_IDS = []
 if YOUR_CHAT_ID:
     TARGET_CHAT_IDS.append(YOUR_CHAT_ID)
@@ -43,13 +36,10 @@ if GIRLFRIEND_CHAT_ID:
 if not TARGET_CHAT_IDS:
     logging.warning("⚠️ Нет получателей! Установи YOUR_CHAT_ID")
 
-# Целевая дата (1 июня 2028)
 TARGET_DATE = datetime(2028, 6, 1, 0, 0, 0)
-
-# --- ИНИЦИАЛИЗАЦИЯ БОТА ---
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# --- КРАСИВЫЕ ШАБЛОНЫ СООБЩЕНИЙ ---
+# --- ШАБЛОНЫ СООБЩЕНИЙ ---
 MESSAGE_TEMPLATES = [
     """✨ *ДО НАШЕГО ПЕРЕЕЗДА ОСТАЛОСЬ* ✨
 
@@ -58,14 +48,14 @@ MESSAGE_TEMPLATES = [
 ⏳ {minutes} минут
 
 🎯 Цель: {date}
-✨I love you""",
+✨ I love you""",
 
-    """🏡 *Отсчет до глaвной цели* 🏡
+    """🏡 *Отсчет до главной цели* 🏡
 
 ⏳ Осталось: {days} дней, {hours} часов, {minutes} минут
 📌 Дата переезда: {date}
 
-✨ Все случaйное обычно стaновится сaмым любимым.. ✨""",
+✨ Все случайное обычно становится самым любимым.. ✨""",
 
     """❤️ *Наш отсчет* ❤️
 
@@ -79,10 +69,35 @@ MESSAGE_TEMPLATES = [
 
 HEART_EMOJIS = ["💖", "❤️", "💕", "💗", "💓", "😍", "🥰", "💑"]
 
-# --- ФУНКЦИИ БОТА ---
+# --- FLASK ДЛЯ ПИНГА ---
+def run_flask_app():
+    """Запускает Flask сервер для поддержания активности."""
+    app = Flask(__name__)
+    
+    @app.route('/')
+    def home():
+        return jsonify({
+            "status": "online",
+            "service": "Countdown Bot",
+            "target_date": TARGET_DATE.strftime("%d.%m.%Y"),
+            "uptime": datetime.now().strftime("%H:%M:%S %d.%m.%Y"),
+            "recipients": len(TARGET_CHAT_IDS)
+        })
+    
+    @app.route('/ping')
+    def ping():
+        return "pong", 200
+    
+    @app.route('/health')
+    def health():
+        return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()}), 200
+    
+    port = int(os.environ.get("PORT", 10000))
+    logging.info(f"🌐 Flask сервер запущен на порту {port}")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
+# --- ФУНКЦИИ БОТА ---
 def get_countdown_message():
-    """Создает красивое сообщение с отсчетом."""
     now = datetime.now()
     remaining = TARGET_DATE - now
 
@@ -93,7 +108,6 @@ def get_countdown_message():
     hours, remainder = divmod(remaining.seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
 
-    # Выбираем случайный шаблон
     template = random.choice(MESSAGE_TEMPLATES)
     heart = random.choice(HEART_EMOJIS)
     
@@ -107,7 +121,6 @@ def get_countdown_message():
     return f"{heart} {message} {heart}"
 
 def send_daily_countdown():
-    """Отправляет ежедневное сообщение."""
     try:
         if not TARGET_CHAT_IDS:
             logging.warning("Пропускаю отправку: нет получателей")
@@ -126,11 +139,9 @@ def send_daily_countdown():
     except Exception as e:
         logging.error(f"❌ Ошибка при отправке: {e}")
     finally:
-        # Планируем следующую отправку
         schedule_next_countdown()
 
 def schedule_next_countdown():
-    """Планирует следующее сообщение."""
     now = datetime.now()
     
     # Завтра в случайное время (8:00-22:00)
@@ -144,13 +155,11 @@ def schedule_next_countdown():
     logging.info(f"⏰ Следующая отправка: {next_time.strftime('%H:%M %d.%m')}")
     logging.info(f"⏳ Ожидание: {delay/3600:.1f} часов")
     
-    # Таймер для следующей отправки
     timer = threading.Timer(delay, send_daily_countdown)
     timer.daemon = True
     timer.start()
 
 # --- КОМАНДЫ БОТА ---
-
 @bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
     welcome = """🤖 *Бот-отсчет до переезда* 🏡
@@ -192,7 +201,6 @@ def send_id(message):
 
 @bot.message_handler(commands=['status'])
 def send_status(message):
-    # Проверяем, что это ты
     if str(message.chat.id) == YOUR_CHAT_ID:
         now = datetime.now()
         status_msg = f"""🔧 *Статус бота:*
@@ -202,7 +210,7 @@ def send_status(message):
 🎯 *Целевая дата:* {TARGET_DATE.strftime('%d %B %Y')}
 👥 *Получатели:* {len(TARGET_CHAT_IDS)}
 🚀 *Хостинг:* Render.com
-📊 *Пинг:* Активен"""
+🌐 *Web доступ:* Активен"""
         
         bot.reply_to(message, status_msg, parse_mode="Markdown")
         logging.info(f"📈 Статус отправлен тебе")
@@ -231,108 +239,26 @@ def send_next_time(message):
 
 # --- ЗАПУСК БОТА ---
 def start_bot():
-    """Запускает бота."""
-    
     logging.info("=" * 50)
     logging.info("🚀 ЗАПУСК БОТА ДЛЯ ОТСЧЕТА ПЕРЕЕЗДА")
     logging.info("=" * 50)
     logging.info(f"🎯 Целевая дата: {TARGET_DATE.strftime('%d.%m.%Y')}")
     logging.info(f"👤 Получателей: {len(TARGET_CHAT_IDS)}")
-
-    flask_thread = threading.Thread(target=keep_alive, daemon=True)
+    
+    # Запускаем Flask в отдельном потоке ДО телеграм бота
+    flask_thread = threading.Thread(target=run_flask_app, daemon=True)
     flask_thread.start()
     
-    # Запускаем планировщик
+    # Даем Flask время запуститься
+    time.sleep(2)
+    
+    # Запускаем планировщик сообщений
     schedule_next_countdown()
     
     logging.info("✅ Бот запущен и готов к работе!")
     logging.info("=" * 50)
     
-    # Запускаем веб-сервер для Render
-    from flask import Flask
-    app = Flask(__name__)
-    
-    @app.route('/')
-    def home():
-        return f"""
-        <html>
-            <head>
-                <title>🤖 Бот-отсчет до переезда</title>
-                <style>
-                    body {{
-                        font-family: Arial, sans-serif;
-                        max-width: 800px;
-                        margin: 0 auto;
-                        padding: 20px;
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        color: white;
-                        min-height: 100vh;
-                    }}
-                    .container {{
-                        background: rgba(255, 255, 255, 0.1);
-                        backdrop-filter: blur(10px);
-                        padding: 30px;
-                        border-radius: 20px;
-                        margin-top: 50px;
-                    }}
-                    h1 {{ color: #FFD700; }}
-                    .status {{ 
-                        background: rgba(0, 0, 0, 0.2); 
-                        padding: 15px; 
-                        border-radius: 10px;
-                        margin: 15px 0;
-                    }}
-                    .emoji {{ font-size: 2em; }}
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <h1 class="emoji">🤖</h1>
-                    <h1>Бот-отсчет до переезда</h1>
-                    <div class="status">
-                        <p><strong>🎯 Цель:</strong> {TARGET_DATE.strftime('%d %B %Y')}</p>
-                        <p><strong>👥 Получателей:</strong> {len(TARGET_CHAT_IDS)}</p>
-                        <p><strong>✅ Статус:</strong> Бот работает</p>
-                        <p><strong>🚀 Хостинг:</strong> Render.com</p>
-                    </div>
-                    <p>Бот отправляет ежедневные напоминания о переезде!</p>
-                    <p>💌 Напишите боту в Telegram команду /start</p>
-                </div>
-            </body>
-        </html>
-        """
-    def keep_alive():
-    """Запускает Flask сервер для ping-запросов."""
-    app = Flask(__name__)
-    
-    @app.route('/')
-    def home():
-        return jsonify({
-            "status": "online",
-            "service": "Countdown Bot",
-            "target_date": TARGET_DATE.strftime("%d.%m.%Y"),
-            "uptime": datetime.now().strftime("%H:%M:%S")
-        })
-    
-    @app.route('/ping')
-    def ping():
-        return "pong", 200
-    
-    @app.route('/health')
-    def health():
-        return jsonify({"status": "healthy"}), 200
-    
-    # Запускаем на порту, который дает Render
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port, debug=False)
-    # Запускаем Flask в отдельном потоке
-    def run_flask():
-        app.run(host='0.0.0.0', port=10000, debug=False)
-    
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
-    # Запускаем бота
+    # Запускаем телеграм бота
     try:
         bot.infinity_polling(timeout=30, long_polling_timeout=10)
     except Exception as e:
