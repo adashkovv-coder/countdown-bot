@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: countdown-bot
+    env: python
+    plan: free
+    region: frankfurt  # Можно выбрать ближайший
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: YOUR_CHAT_ID
+        sync: false
+      - key: GIRLFRIEND_CHAT_ID
+        sync: false
+    healthCheckPath: /
+    autoDeploy: true
