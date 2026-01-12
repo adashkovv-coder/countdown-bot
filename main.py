@@ -5,6 +5,11 @@ import time
 import threading
 import os
 import logging
+from flask import Flask, jsonify
+import threading
+import requests
+import schedule
+import time
 
 # Настройка логирования
 logging.basicConfig(
@@ -227,11 +232,15 @@ def send_next_time(message):
 # --- ЗАПУСК БОТА ---
 def start_bot():
     """Запускает бота."""
+    
     logging.info("=" * 50)
     logging.info("🚀 ЗАПУСК БОТА ДЛЯ ОТСЧЕТА ПЕРЕЕЗДА")
     logging.info("=" * 50)
     logging.info(f"🎯 Целевая дата: {TARGET_DATE.strftime('%d.%m.%Y')}")
     logging.info(f"👤 Получателей: {len(TARGET_CHAT_IDS)}")
+
+    flask_thread = threading.Thread(target=keep_alive, daemon=True)
+    flask_thread.start()
     
     # Запускаем планировщик
     schedule_next_countdown()
@@ -292,7 +301,30 @@ def start_bot():
             </body>
         </html>
         """
+    def keep_alive():
+    """Запускает Flask сервер для ping-запросов."""
+    app = Flask(__name__)
     
+    @app.route('/')
+    def home():
+        return jsonify({
+            "status": "online",
+            "service": "Countdown Bot",
+            "target_date": TARGET_DATE.strftime("%d.%m.%Y"),
+            "uptime": datetime.now().strftime("%H:%M:%S")
+        })
+    
+    @app.route('/ping')
+    def ping():
+        return "pong", 200
+    
+    @app.route('/health')
+    def health():
+        return jsonify({"status": "healthy"}), 200
+    
+    # Запускаем на порту, который дает Render
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port, debug=False)
     # Запускаем Flask в отдельном потоке
     def run_flask():
         app.run(host='0.0.0.0', port=10000, debug=False)
